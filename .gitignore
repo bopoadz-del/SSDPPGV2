@@ -25,6 +25,8 @@ Thumbs.db
 # Project outputs
 *.log
 *.csv
+*.log
+server.log
 output/
 results/
 .env

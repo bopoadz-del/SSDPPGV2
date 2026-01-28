@@ -31,8 +31,6 @@ pytest -q
 
 The app uses `gunicorn` and binds to `0.0.0.0:$PORT`.
 
-For one-click Render deploys, `render.yaml` is included at the repo root.
-
 ## Example histogram CSV
 
 ```csv
