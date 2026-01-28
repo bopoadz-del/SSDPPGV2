@@ -1,8 +1,5 @@
-
 # MSSDPPG Simulation Code - Implementation Guide for Claude Code
-
 ## Instructions for Claude Code
-
 **Goal:** Create a complete Python simulation of MSSDPPG systems with Streamlit UI
 
 **Base this on:** MSSDPPG_FINAL_RUBRIC_v5.0_CORRECTED.md
