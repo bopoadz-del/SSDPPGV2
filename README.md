@@ -1,84 +1,103 @@
-# MSSDPPG Live Simulator + Wind/Economics Cockpit
+# MSSDPPG Live Simulator
 
-This repo contains:
+MSSDPPG Live Simulator provides a Flask web app and CLI for deterministic simulator-based power curves, AEP, LCOE, and whole-site rollups. It includes multi-tab UI tooling for physics, wind resource, power curves, economics, smoothing, and site metrics.
 
-- **Ultra‑Realistic simulator** (2D + 3D) with control modes (Lock–Release / Push–Pull / None)
-- **Live web UI** (Flask + vanilla JS + Plotly) with:
-  - Live power / angles / wind plots
-  - Wind resource modeling (**Weibull** presets or **histogram CSV** upload)
-  - **Power curve** builder (short constant‑wind simulations)
-  - **AEP + LCOE** calculator (finance + losses + inverter clipping)
-  - **Phase offsets & curtailment** analysis (smoothing + clipping loss)
-  - **Whole‑site rollups** (modules, spacing factor, land cost)
-- **Rubric‑aligned presets** (Scenario presets follow Rubric v5.0: fixed middle/tip masses per scale; arm masses scale with (L/2)^2)
-
-## Source documents
-
-The authoritative references are included in `docs/`:
-
-- `MSSDPPG_FINAL_RUBRIC_v5.0_CORRECTED.md.pdf`
-- `MSSDPPG_Patent_Application_COMPLETE.md.pdf`
-- `MSSDPPG_Simulation_Code_Hints.md`
-
-## Quick start
+## Local setup
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate   # (Windows: .venv\Scripts\activate)
 pip install -r requirements.txt
-
 python app.py
 ```
 
-Open the UI:
+Open `http://localhost:5000` to access the UI.
 
-- http://localhost:5000
-
-## CLI simulation (headless)
+## CLI usage
 
 ```bash
-python MSSDPPG_UltraRealistic_v2.py --scenario 4x40ft_asymmetric --duration 6h --mode 2d --control lock --assist
+python app.py scenarios
+python app.py lcoe --aep-kwh 1500000 --capex 1200000
 ```
 
-Useful flags (see `--help`):
+## Tests
 
-- `--kickstart` : initialize with a large release angle (stress/free‑run testing)
-- `--wind_constant 7.0` : run at constant wind instead of a profile
-- `--no_safety_clamp` : bypass motion safety limits (use carefully)
-- `--export_csv` : dump time series to `outputs/`
+```bash
+pytest -q
+```
 
-## Wind histogram CSV format
+## Render deployment
 
-Upload a CSV with either:
+- **Build Command**: `pip install -r requirements.txt`
+- **Start Command**: `bash start.sh`
 
-- `speed_mps, prob`  
-or  
-- `speed_mps, count` (will be normalized to probability)
+The app uses `gunicorn` and binds to `0.0.0.0:$PORT`.
 
-Example:
+For one-click Render deploys, `render.yaml` is included at the repo root.
+
+## Example histogram CSV
 
 ```csv
-speed_mps,count
-2,10
-3,25
-4,40
-5,30
-6,15
+speed_mps,prob
+3,0.03
+4,0.06
+5,0.12
+6,0.16
+7,0.18
+8,0.16
+9,0.12
+10,0.09
+11,0.05
+12,0.03
 ```
 
-## Outputs
+## File tree
 
-Generated artifacts go to `outputs/` (examples):
-
-- simulation time series CSVs
-- event detection CSVs (mega free‑fall / lock candidates)
-- cached power‑curve results (`powercurve_cache_*.json`)
-
-## Notes on interpretation
-
-- The **economics layer** can use:
-  - **Simulation curve** (recommended for internal consistency), or
-  - **Aero Cp curve**: `P(v) = 0.5 * ρ * A * Cp * v^3` (useful sanity check).  
-  Choose in the UI under **Economics → Curve source**.
-
-- The simulator’s electrical scaling and losses are modeled at a **system level** and may need calibration against measured prototype data.
+```
+repo/
+  app.py
+  start.sh
+  Procfile
+  requirements.txt
+  .gitignore
+  README.md
+  docs/
+    MSSDPPG_FINAL_RUBRIC_v5.0_CORRECTED.md.pdf
+    MSSDPPG_Patent_Application_COMPLETE.md.pdf
+    MSSDPPG_Simulation_Code_Hints.md
+  mssdppg/
+    __init__.py
+    scenarios.py
+    physics/
+      __init__.py
+      dp2d.py
+      dp3d.py
+      energy.py
+    wind/
+      __init__.py
+      weibull.py
+      histogram.py
+      presets.py
+    powercurve/
+      __init__.py
+      builder.py
+      cache.py
+    economics/
+      __init__.py
+      capex.py
+      aep.py
+      lcoe.py
+      finance.py
+      land.py
+      smoothing.py
+    exports/
+      __init__.py
+      tables.py
+  static/
+    app.js
+    styles.css
+  templates/
+    index.html
+  tests/
+    test_wind.py
+    test_lcoe.py
+    test_api_smoke.py
+```

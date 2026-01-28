@@ -10,6 +10,7 @@ __pycache__/
 venv/
 env/
 ENV/
+.venv/
 
 # IDE
 .vscode/
@@ -22,7 +23,12 @@ ENV/
 Thumbs.db
 
 # Project outputs
+*.log
 *.csv
 output/
 results/
 .env
+.cache/
+
+# Test artifacts
+.pytest_cache/

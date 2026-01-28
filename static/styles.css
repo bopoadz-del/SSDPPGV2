@@ -1,0 +1,124 @@
+body {
+  font-family: "Segoe UI", sans-serif;
+  margin: 0;
+  background: #f4f6fb;
+  color: #202435;
+}
+
+header {
+  background: linear-gradient(120deg, #263067, #3346a4);
+  color: #fff;
+  padding: 24px 40px;
+}
+
+header h1 {
+  margin: 0 0 4px 0;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  padding: 12px 24px;
+  background: #fff;
+  border-bottom: 1px solid #dde3f0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.tab-button {
+  border: none;
+  background: #e7ecfb;
+  padding: 10px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.tab-button.active {
+  background: #4254b5;
+  color: #fff;
+}
+
+main {
+  padding: 24px;
+}
+
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+.grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.card {
+  background: #fff;
+  padding: 16px;
+  border-radius: 12px;
+  box-shadow: 0 10px 24px rgba(13, 20, 49, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.9rem;
+}
+
+input,
+select,
+textarea,
+button {
+  font: inherit;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #c7cfdf;
+}
+
+button {
+  background: #4254b5;
+  color: #fff;
+  cursor: pointer;
+  border: none;
+}
+
+button:hover {
+  background: #33449c;
+}
+
+.plot {
+  min-height: 280px;
+}
+
+.table-wrap {
+  margin-top: 16px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+}
+
+th,
+td {
+  border: 1px solid #dde3f0;
+  padding: 8px;
+  text-align: left;
+}
+
+footer {
+  text-align: center;
+  padding: 18px;
+  color: #5d6478;
+}
