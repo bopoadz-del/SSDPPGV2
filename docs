@@ -1,1 +1,772 @@
 
+# MSSDPPG Simulation Code - Implementation Guide for Claude Code
+
+## Instructions for Claude Code
+
+**Goal:** Create a complete Python simulation of MSSDPPG systems with Streamlit UI
+
+**Base this on:** MSSDPPG_FINAL_RUBRIC_v5.0_CORRECTED.md
+
+---
+
+## 1. Core Physics Engine
+
+### **File: `physics_engine.py`**
+
+```python
+"""
+Double pendulum physics with asymmetric arms, electromagnetic control,
+and adaptive magnetic assist.
+
+Key equations:
+- Lagrangian mechanics for asymmetric double pendulum
+- Electromagnetic generator torque: τ = k_t × i
+- Back-EMF: V = k_e × ω (where k_e = k_t)
+- Copper loss: P_loss = I² × R
+- Adaptive magnetic assist activation logic
+"""
+
+class DoublePendulum:
+    def __init__(self, L1, L2, m_upper, m_middle, m_lower, m_tip):
+        # CRITICAL: m_middle and m_tip are FIXED per scale
+        # Container: 30kg middle, 5kg tip
+        # Mega: 120kg middle, 30kg tip
+        # Tower: 15kg middle, 2.5kg tip
+        
+        # m_upper and m_lower scale with L²:
+        # m = m_base × (L/2.0)²
+        
+        self.L1 = L1
+        self.L2 = L2
+        self.m_upper = m_upper
+        self.m_middle = m_middle  # FIXED!
+        self.m_lower = m_lower
+        self.m_tip = m_tip  # FIXED!
+    
+    def equations_of_motion(self, state, t, wind_speed):
+        """
+        Returns [θ1_dot, ω1_dot, θ2_dot, ω2_dot]
+        
+        Must include:
+        1. Wind torque on both arms (with Betz limit)
+        2. Electromagnetic braking torque (from hinge generators)
+        3. Clutch torque to shaft (one-way, upper hinge only)
+        4. Gravity terms
+        5. Centrifugal and Coriolis forces
+        6. Adaptive magnetic assist (if wind < 4 m/s)
+        """
+        pass
+
+class HingeGenerator:
+    def __init__(self, k_t, R_coil, position='upper'):
+        """
+        Container scale (base):
+        - Upper: k_t = 0.75 N·m/A, R = 0.45 Ω
+        - Lower: k_t = 0.60 N·m/A, R = 0.38 Ω
+        
+        Scaling for other sizes:
+        - k_t_scaled = k_t_base × (L/2.0)²
+        - R stays similar (depends on wire gauge)
+        """
+        self.k_t = k_t
+        self.R_coil = R_coil
+        
+    def calculate_power(self, omega, current, efficiency=0.80):
+        """
+        P_mech = k_t × i × ω
+        P_copper = i² × R
+        P_elec = (P_mech - P_copper) × efficiency
+        
+        Return electrical power output
+        """
+        P_mech = self.k_t * current * omega
+        P_copper = current**2 * self.R_coil
+        P_elec = (P_mech - P_copper) * efficiency
+        return max(0, P_elec)
+
+class LockReleaseController:
+    def __init__(self):
+        """
+        Adaptive electromagnetic control:
+        
+        Lock phase (θ between 15-55°, ω > 0):
+        - i = 6A (high braking)
+        
+        Release phase (other times):
+        - i = adaptive baseline (1-3A based on ω)
+        
+        Thermal derating above 100°C
+        """
+        self.i_high = 6.0  # Lock current
+        self.i_low_min = 1.0  # Release min
+        self.i_low_max = 3.0  # Release max
+        
+    def get_current(self, theta, omega, temperature):
+        """Return commanded current based on pendulum state"""
+        pass
+
+class AdaptiveMagneticAssist:
+    def __init__(self, force_per_pulse, placement_height):
+        """
+        Activates ONLY when:
+        - wind_speed < 4.0 m/s OR
+        - amplitude < 30° OR
+        - power < 20% rated
+        
+        Provides resonant pulses at tip level
+        """
+        self.force = force_per_pulse
+        self.height = placement_height
+        self.active = False
+        
+    def should_activate(self, wind_speed, amplitude, power_ratio):
+        """Return True if assist should turn on"""
+        return (wind_speed < 4.0 or 
+                amplitude < 0.524 or  # 30 degrees
+                power_ratio < 0.2)
+    
+    def get_torque(self, theta, omega):
+        """
+        Apply pulse when pendulum passes vertical (θ ≈ 0)
+        and moving at high velocity
+        
+        Pulse duration: 0.08s
+        Average power: ~6W per pendulum (container scale)
+        """
+        if self.active and abs(theta) < 0.087 and abs(omega) > 15:
+            # Apply resonant pulse
+            return self.force * self.height * np.sign(omega)
+        return 0
+```
+
+---
+
+## 2. System Configurations
+
+### **File: `configurations.py`**
+
+```python
+"""
+Pre-defined system configurations matching the rubric.
+
+CRITICAL: Only these configurations exist:
+1. 20ft standalone (single shaft, 12 pendulums)
+2. 4×40ft system (dual shaft, 48 pendulums) ← PRIMARY
+3. Mega-pendulum (dual shaft, 24 pendulums)
+4. Tower cantilever (single shaft, 8 pendulums)
+"""
+
+CONFIGS = {
+    '20ft_standalone': {
+        'name': '20ft Standalone Container',
+        'L1': 0.68,  # meters
+        'L2': 1.5,   # meters (1:2.2 ratio)
+        'shafts': 1,
+        'pendulums_per_shaft': 12,
+        'total_pendulums': 12,
+        'm_middle': 30,  # kg - FIXED
+        'm_tip': 5,      # kg - FIXED
+        'k_t_upper_base': 0.75,
+        'k_t_lower_base': 0.60,
+        'R_upper': 0.45,
+        'R_lower': 0.38,
+        'rated_wind': 6.0,  # m/s
+        'expected_power': 1.58,  # kW with magnetic
+        'cost': 12000,
+    },
+    
+    '4x40ft_asymmetric': {
+        'name': '4×40ft Container System (Asymmetric)',
+        'L1': 1.31,  # meters
+        'L2': 2.88,  # meters (1:2.2 ratio)
+        'shafts': 2,
+        'pendulums_per_shaft': 24,
+        'total_pendulums': 48,
+        'm_middle': 30,  # kg - FIXED
+        'm_tip': 5,      # kg - FIXED
+        'k_t_upper_base': 0.75,
+        'k_t_lower_base': 0.60,
+        'R_upper': 0.45,
+        'R_lower': 0.38,
+        'rated_wind': 6.0,
+        'expected_power': 14.9,  # kW with magnetic
+        'cost': 47000,
+    },
+    
+    '4x40ft_symmetric': {
+        'name': '4×40ft Container System (Symmetric BASELINE)',
+        'L1': 2.0,
+        'L2': 2.0,
+        'shafts': 2,
+        'pendulums_per_shaft': 24,
+        'total_pendulums': 48,
+        'm_middle': 30,  # kg - FIXED
+        'm_tip': 5,      # kg - FIXED
+        'k_t_upper_base': 0.75,
+        'k_t_lower_base': 0.60,
+        'R_upper': 0.45,
+        'R_lower': 0.38,
+        'rated_wind': 6.0,
+        'expected_power': 4.5,  # kW VALIDATED
+        'cost': 36000,
+    },
+    
+    'mega_asymmetric': {
+        'name': 'Mega-Pendulum (Asymmetric)',
+        'L1': 4.38,
+        'L2': 9.63,
+        'shafts': 2,
+        'pendulums_per_shaft': 12,
+        'total_pendulums': 24,
+        'm_middle': 120,  # kg - FIXED
+        'm_tip': 30,      # kg - FIXED
+        'k_t_upper_base': 0.75,
+        'k_t_lower_base': 0.60,
+        'R_upper': 0.45,
+        'R_lower': 0.38,
+        'rated_wind': 8.0,
+        'expected_power': 93,  # kW with magnetic
+        'cost': 240000,
+    },
+    
+    'tower_asymmetric': {
+        'name': 'Tower Cantilever (Asymmetric)',
+        'L1': 0.69,
+        'L2': 1.52,
+        'shafts': 1,
+        'pendulums_per_shaft': 8,
+        'total_pendulums': 8,
+        'm_middle': 15,   # kg - FIXED
+        'm_tip': 2.5,     # kg - FIXED
+        'k_t_upper_base': 0.75,
+        'k_t_lower_base': 0.60,
+        'R_upper': 0.45,
+        'R_lower': 0.38,
+        'rated_wind': 7.5,
+        'expected_power': 1.14,  # kW with magnetic
+        'cost': 3600,
+    },
+}
+
+def calculate_arm_masses(L1, L2, config_name):
+    """
+    Calculate distributed arm masses based on length.
+    
+    Base values @ 2m reference:
+    - m_upper_base = 25 kg
+    - m_lower_base = 20 kg
+    
+    Scaling: m = m_base × (L/2.0)²
+    
+    Returns: (m_upper, m_lower)
+    """
+    m_upper = 25 * (L1 / 2.0)**2
+    m_lower = 20 * (L2 / 2.0)**2
+    return m_upper, m_lower
+
+def calculate_scaled_kt(k_t_base, L, L_ref=2.0):
+    """
+    Scale k_t for different arm lengths.
+    
+    k_t scales with area: k_t = k_t_base × (L/L_ref)²
+    
+    This is because the coil and magnet scale proportionally.
+    """
+    return k_t_base * (L / L_ref)**2
+```
+
+---
+
+## 3. Alternator Model
+
+### **File: `alternator.py`**
+
+```python
+"""
+Alternator performance from generator_curve.csv
+"""
+
+import pandas as pd
+from scipy.interpolate import interp1d
+
+class Alternator:
+    def __init__(self, csv_path='generator_curve.csv'):
+        """
+        Load alternator curve from CSV.
+        
+        CSV format:
+        omega_rad_s, P_elec_W, tau_gen_Nm
+        20.9, 300, 14.4
+        ...
+        146.6, 2300, 15.7
+        """
+        data = pd.read_csv(csv_path)
+        
+        self.omega_curve = data['omega_rad_s'].values
+        self.power_curve = data['P_elec_W'].values
+        self.torque_curve = data['tau_gen_Nm'].values
+        
+        # Create interpolation functions
+        self.power_interp = interp1d(
+            self.omega_curve, 
+            self.power_curve,
+            kind='linear',
+            bounds_error=False,
+            fill_value=(0, self.power_curve[-1])
+        )
+        
+        self.torque_interp = interp1d(
+            self.omega_curve,
+            self.torque_curve,
+            kind='linear',
+            bounds_error=False,
+            fill_value='extrapolate'
+        )
+    
+    def get_power(self, omega_rad_s):
+        """Return electrical power at given angular velocity"""
+        return float(self.power_interp(abs(omega_rad_s)))
+    
+    def get_torque(self, omega_rad_s):
+        """Return generator load torque (opposes motion)"""
+        torque = float(self.torque_interp(abs(omega_rad_s)))
+        return -np.sign(omega_rad_s) * torque  # Opposes rotation
+```
+
+---
+
+## 4. Complete System Simulator
+
+### **File: `system_simulator.py`**
+
+```python
+"""
+Complete MSSDPPG system simulation with multiple pendulums,
+shafts, alternators, and adaptive magnetic assist.
+"""
+
+class MSSLDPPGSystem:
+    def __init__(self, config_name):
+        """
+        Initialize system from configuration name.
+        
+        Creates:
+        - N pendulums (with staggered positions)
+        - Shaft(s) with flywheel
+        - Alternator(s)
+        - Lock-release controllers
+        - Adaptive magnetic assist
+        """
+        self.config = CONFIGS[config_name]
+        self.pendulums = []
+        self.shafts = []
+        self.alternators = []
+        self.controllers = []
+        self.magnetic_assist = None
+        
+        # Initialize components
+        self._create_pendulums()
+        self._create_shafts()
+        self._create_alternators()
+        self._create_magnetic_assist()
+        
+    def simulate(self, duration, dt, wind_profile):
+        """
+        Run time-domain simulation.
+        
+        Args:
+            duration: Simulation time (seconds)
+            dt: Time step (seconds)
+            wind_profile: Function or array of wind speeds
+        
+        Returns:
+            results: Dictionary with time histories
+        """
+        t_array = np.arange(0, duration, dt)
+        results = {
+            'time': t_array,
+            'total_power': [],
+            'hinge_power': [],
+            'alternator_power': [],
+            'magnetic_power': [],
+            'shaft_speed': [],
+            'pendulum_angles': [],
+        }
+        
+        for t in t_array:
+            # Get wind speed at this time
+            wind = wind_profile(t)
+            
+            # Update each pendulum
+            total_hinge_power = 0
+            shaft_torque = 0
+            
+            for pend, ctrl in zip(self.pendulums, self.controllers):
+                # Update controller
+                current = ctrl.get_current(
+                    pend.theta1, 
+                    pend.omega1, 
+                    pend.temperature
+                )
+                
+                # Calculate hinge power
+                hinge_power = pend.calculate_hinge_power(current)
+                total_hinge_power += hinge_power
+                
+                # Calculate shaft torque (via clutch)
+                shaft_torque += pend.calculate_shaft_torque()
+                
+                # Integrate equations of motion
+                pend.step(dt, wind, current)
+            
+            # Update shaft(s)
+            alternator_power = 0
+            for shaft, alt in zip(self.shafts, self.alternators):
+                # Apply torque from pendulums
+                shaft.apply_torque(shaft_torque)
+                
+                # Get alternator loading
+                alt_omega = shaft.omega * 80  # Gearbox ratio
+                alt_torque = alt.get_torque(alt_omega)
+                shaft.apply_alternator_load(alt_torque)
+                
+                # Calculate alternator power
+                alt_power = alt.get_power(alt_omega)
+                alternator_power += alt_power
+                
+                # Step shaft dynamics
+                shaft.step(dt)
+            
+            # Adaptive magnetic assist
+            magnetic_power = 0
+            if self.magnetic_assist:
+                if self.magnetic_assist.should_activate(wind, ...):
+                    magnetic_power = self.magnetic_assist.power_consumption
+            
+            # Record results
+            total_power = total_hinge_power + alternator_power - magnetic_power
+            results['total_power'].append(total_power)
+            results['hinge_power'].append(total_hinge_power)
+            results['alternator_power'].append(alternator_power)
+            results['magnetic_power'].append(magnetic_power)
+            
+        return results
+    
+    def calculate_annual_energy(self, wind_site_data):
+        """
+        Calculate annual energy production based on wind site data.
+        
+        Uses:
+        - Rayleigh distribution for wind speeds
+        - 30% capacity factor assumption
+        - 8,760 hours per year
+        """
+        pass
+```
+
+---
+
+## 5. Streamlit UI
+
+### **File: `app.py`**
+
+```python
+"""
+Interactive Streamlit application for MSSDPPG simulation.
+"""
+
+import streamlit as st
+import plotly.graph_objects as go
+
+st.set_page_config(page_title="MSSDPPG Simulator", layout="wide")
+
+st.title("🌬️ MSSDPPG - Wind Energy Harvesting System")
+st.subheader("Modularized Self-Sustained Double Pendulum Power Generation")
+
+# Sidebar configuration
+st.sidebar.header("System Configuration")
+
+config_name = st.sidebar.selectbox(
+    "Select Configuration",
+    options=[
+        '20ft_standalone',
+        '4x40ft_symmetric',
+        '4x40ft_asymmetric',
+        'mega_asymmetric',
+        'tower_asymmetric'
+    ],
+    index=2,  # Default to 4×40ft asymmetric
+    format_func=lambda x: CONFIGS[x]['name']
+)
+
+config = CONFIGS[config_name]
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("Simulation Parameters")
+
+wind_speed = st.sidebar.slider(
+    "Average Wind Speed (m/s)",
+    min_value=3.0,
+    max_value=12.0,
+    value=config['rated_wind'],
+    step=0.5
+)
+
+duration = st.sidebar.slider(
+    "Simulation Duration (seconds)",
+    min_value=10,
+    max_value=300,
+    value=60,
+    step=10
+)
+
+enable_magnetic = st.sidebar.checkbox(
+    "Enable Adaptive Magnetic Assist",
+    value=True
+)
+
+# Display system specs
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.metric("Expected Power", f"{config['expected_power']} kW")
+    st.metric("Pendulums", config['total_pendulums'])
+
+with col2:
+    st.metric("System Cost", f"${config['cost']:,}")
+    st.metric("Shafts", config['shafts'])
+
+with col3:
+    st.metric("Arms", f"{config['L1']:.2f}m + {config['L2']:.2f}m")
+    ratio = config['L2'] / config['L1']
+    st.metric("Arm Ratio", f"1:{ratio:.2f}")
+
+# Run simulation button
+if st.button("🚀 Run Simulation", type="primary"):
+    with st.spinner("Running simulation..."):
+        # Create system
+        system = MSSLDPPGSystem(config_name)
+        
+        # Wind profile (constant + gusts)
+        def wind_profile(t):
+            return wind_speed + 2.0 * np.sin(2 * np.pi * 0.1 * t)
+        
+        # Run simulation
+        results = system.simulate(
+            duration=duration,
+            dt=0.01,
+            wind_profile=wind_profile
+        )
+        
+        # Display results
+        st.success("✅ Simulation Complete!")
+        
+        # Power output plot
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=results['time'],
+            y=results['total_power'] / 1000,  # Convert to kW
+            name='Total Power',
+            line=dict(color='green', width=2)
+        ))
+        fig.add_trace(go.Scatter(
+            x=results['time'],
+            y=results['hinge_power'] / 1000,
+            name='Hinge Power',
+            line=dict(color='blue', dash='dash')
+        ))
+        fig.add_trace(go.Scatter(
+            x=results['time'],
+            y=results['alternator_power'] / 1000,
+            name='Alternator Power',
+            line=dict(color='orange', dash='dash')
+        ))
+        
+        fig.update_layout(
+            title="Power Output Over Time",
+            xaxis_title="Time (s)",
+            yaxis_title="Power (kW)",
+            height=400
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Statistics
+        avg_power = np.mean(results['total_power']) / 1000
+        peak_power = np.max(results['total_power']) / 1000
+        
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Average Power", f"{avg_power:.2f} kW")
+        col2.metric("Peak Power", f"{peak_power:.2f} kW")
+        col3.metric("vs Expected", f"{(avg_power/config['expected_power']-1)*100:+.1f}%")
+
+# Economics calculator
+st.markdown("---")
+st.header("💰 Economic Analysis")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    diesel_price = st.number_input(
+        "Diesel Price ($/kWh)",
+        min_value=0.10,
+        max_value=1.50,
+        value=0.65,
+        step=0.05
+    )
+
+with col2:
+    capacity_factor = st.slider(
+        "Capacity Factor (%)",
+        min_value=20,
+        max_value=40,
+        value=30,
+        step=5
+    )
+
+# Calculate economics
+annual_kwh = config['expected_power'] * 8760 * (capacity_factor / 100)
+annual_savings = annual_kwh * diesel_price
+payback_years = config['cost'] / annual_savings
+
+col1, col2, col3 = st.columns(3)
+col1.metric("Annual Energy", f"{annual_kwh:,.0f} kWh")
+col2.metric("Annual Savings", f"${annual_savings:,.0f}")
+col3.metric("Payback Period", f"{payback_years:.1f} years")
+
+# Validation against rubric
+st.markdown("---")
+st.header("✅ Rubric Validation")
+
+if config_name == '4x40ft_symmetric':
+    st.info("📋 **BASELINE VALIDATION**: This is the validated 4.5 kW @ 6 m/s baseline from Replit simulations.")
+    st.success("Expected: 4.5 kW | Simulation should match within ±10%")
+elif config_name == '4x40ft_asymmetric':
+    st.info("📋 **TARGET PERFORMANCE**: Asymmetric configuration should achieve 14.9 kW @ 6 m/s (231% gain)")
+    st.success("Expected: 14.9 kW | Validate against symmetric baseline")
+```
+
+---
+
+## 6. Key Validation Points
+
+### **CRITICAL: Simulation Must Match These Values**
+
+```python
+VALIDATION_TARGETS = {
+    '4x40ft_symmetric': {
+        'power_at_6ms': 4.5,  # kW - VALIDATED BASELINE
+        'hinge_percentage': 70,
+        'alternator_percentage': 30,
+        'tolerance': 0.10,  # ±10%
+    },
+    
+    '4x40ft_asymmetric': {
+        'power_at_6ms': 14.9,  # kW - TARGET
+        'gain_vs_symmetric': 2.31,  # 231% increase
+        'hinge_percentage': 68,
+        'alternator_percentage': 32,
+        'tip_velocity': 98.2,  # m/s
+        'tolerance': 0.15,  # ±15%
+    },
+    
+    '20ft_standalone': {
+        'power_at_6ms': 1.58,  # kW with magnetic
+        'hinge_percentage': 48,
+        'alternator_percentage': 52,
+        'tolerance': 0.20,
+    },
+}
+
+def validate_simulation(config_name, simulated_power, wind_speed=6.0):
+    """
+    Check if simulation results match rubric expectations.
+    
+    Returns: (passed, message)
+    """
+    target = VALIDATION_TARGETS.get(config_name)
+    if not target:
+        return True, "No validation target defined"
+    
+    expected = target['power_at_6ms']
+    error = abs(simulated_power - expected) / expected
+    
+    if error <= target['tolerance']:
+        return True, f"✅ VALIDATED: {simulated_power:.2f} kW matches expected {expected} kW"
+    else:
+        return False, f"❌ MISMATCH: {simulated_power:.2f} kW vs expected {expected} kW ({error*100:.1f}% error)"
+```
+
+---
+
+## 7. Testing Checklist
+
+**Before deployment, verify:**
+
+- [ ] Symmetric 4×40ft produces 4.5 kW @ 6 m/s (±10%)
+- [ ] Asymmetric 4×40ft produces 14.9 kW @ 6 m/s (±15%)
+- [ ] Hinge power is 68-70% of total
+- [ ] Alternator power is 30-32% of total
+- [ ] Middle mass is FIXED (30kg/120kg/15kg)
+- [ ] Tip mass is FIXED (5kg/30kg/2.5kg)
+- [ ] Arm distributed mass scales with L²
+- [ ] Hinge ω operates at 15-25 rad/s (NOT 2!)
+- [ ] Asymmetric tip velocity = 98 m/s (vs 76 m/s symmetric)
+- [ ] Magnetic assist activates only below 4 m/s
+- [ ] Magnetic assist is net positive (+2,999 kWh/year for 4×40ft)
+
+---
+
+## 8. File Structure
+
+```
+mssdppg_simulator/
+├── app.py                      # Streamlit UI
+├── physics_engine.py           # Core mechanics
+├── configurations.py           # System configs
+├── alternator.py              # Alternator model
+├── system_simulator.py        # Complete system
+├── generator_curve.csv        # Alternator data
+├── requirements.txt           # Dependencies
+└── README.md                  # Documentation
+```
+
+**requirements.txt:**
+```
+streamlit>=1.28.0
+numpy>=1.24.0
+scipy>=1.11.0
+pandas>=2.0.0
+plotly>=5.17.0
+```
+
+---
+
+## 9. Claude Code Prompt
+
+**Copy this to Claude Code:**
+
+```
+Create a complete Python simulation for MSSDPPG (wind energy harvesting) 
+based on the specifications in MSSDPPG_FINAL_RUBRIC_v5.0_CORRECTED.md
+
+Requirements:
+1. Asymmetric double pendulum physics (1:2.2 arm ratio)
+2. Electromagnetic hinge generators with lock-release control
+3. Alternator model from generator_curve.csv
+4. Adaptive magnetic assist (activates below 4 m/s)
+5. Streamlit UI with real-time visualization
+6. Four configurations: 20ft, 4×40ft symmetric, 4×40ft asymmetric, mega, tower
+
+CRITICAL validations:
+- 4×40ft symmetric MUST produce 4.5 kW @ 6 m/s (baseline)
+- 4×40ft asymmetric MUST produce 14.9 kW @ 6 m/s (target)
+- 70% power from hinges, 30% from alternators
+- Middle mass FIXED (30kg container, 120kg mega, 15kg tower)
+- Tip mass FIXED (5kg container, 30kg mega, 2.5kg tower)
+
+Follow the implementation hints in MSSDPPG_Simulation_Code_Hints.md
+```
+
+---
+
+*End of Simulation Code Hints*
