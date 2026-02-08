@@ -1,1 +1,0 @@
-"""MSSDPPG Live Simulator package."""

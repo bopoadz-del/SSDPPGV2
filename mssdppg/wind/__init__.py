@@ -1,1 +1,0 @@
-"""Wind resource utilities."""

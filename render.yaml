@@ -1,7 +1,0 @@
-services:
-  - type: web
-    name: mssdppg-live-simulator
-    env: python
-    plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: bash start.sh
